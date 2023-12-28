@@ -9,9 +9,11 @@
   <author email="clemens1@familie-elflein.de">Clemens Elflein</author>
   <license>Apache 2.0</license>
 
-  <buildtool_depend>catkin</buildtool_depend>
-  <exec_depend>xesc_msgs</exec_depend>
-  <exec_depend>xesc_driver</exec_depend>
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+  <depend>xesc_msgs</depend>
+  <depend>xesc_driver</depend>
 
   <export>
     <metapackage/>

@@ -5,14 +5,14 @@
 #ifndef SRC_XESC_INTERFACE_H
 #define SRC_XESC_INTERFACE_H
 
-#include <xesc_msgs/XescStateStamped.h>
+#include "xesc_msgs/msg/xesc_state_stamped.hpp"
 
 
 namespace xesc_interface {
     class XescInterface {
     public:
-        virtual void getStatus(xesc_msgs::XescStateStamped &state)=0;
-        virtual void getStatusBlocking(xesc_msgs::XescStateStamped &state)=0;
+        virtual void getStatus(xesc_msgs::msg::XescStateStamped &state)=0;
+        virtual void getStatusBlocking(xesc_msgs::msg::XescStateStamped &state)=0;
         virtual void setDutyCycle(float duty_cycle)=0;
         virtual void stop()=0;
 

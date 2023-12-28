@@ -36,14 +36,16 @@
 #include "vesc_driver/vesc_driver.h"
 
 namespace vesc_driver {
-    VescDriver::VescDriver(ros::NodeHandle &nh, ros::NodeHandle &private_nh)
-            : vesc_(std::bind(&VescDriver::vescErrorCallback, this, std::placeholders::_1)),
-              duty_cycle_limit_(private_nh, "duty_cycle", -1.0, 1.0) {
+    VescDriver::VescDriver(rclcpp::Node &nh)
+            : node_(&nh), vesc_(std::bind(&VescDriver::vescErrorCallback, this, std::placeholders::_1)),
+              duty_cycle_limit_(nh, "duty_cycle", -1.0, 1.0) {
+        nh.declare_parameter("serial_port", rclcpp::PARAMETER_STRING);
+
         // get vesc serial port address
         std::string port;
-        if (!private_nh.getParam("serial_port", port)) {
-            ROS_FATAL("VESC communication port parameter required.");
-            throw ros::InvalidParameterException("VESC communication port parameter required.");
+        if (!nh.get_parameter("serial_port", port)) {
+            RCLCPP_FATAL(node_->get_logger(), "VESC communication port parameter required.");
+            throw rclcpp::exceptions::InvalidParametersException("VESC communication port parameter required.");
         }
 
         vesc_.start(port);
@@ -51,7 +53,7 @@ namespace vesc_driver {
 
 
     void VescDriver::vescErrorCallback(const std::string &error) {
-        ROS_ERROR("%s", error.c_str());
+        RCLCPP_ERROR_STREAM(node_->get_logger(), error);
     }
 
 
@@ -59,10 +61,10 @@ namespace vesc_driver {
         vesc_.stop();
     }
 
-    void VescDriver::getStatus(xesc_msgs::XescStateStamped &state_msg) {
+    void VescDriver::getStatus(xesc_msgs::msg::XescStateStamped &state_msg) {
         vesc_.get_status(&vesc_status);
 
-        state_msg.header.stamp = ros::Time::now();
+        state_msg.header.stamp = node_->now();
         state_msg.state.connection_state = vesc_status.connection_state;
         state_msg.state.fw_major = vesc_status.fw_version_major;
         state_msg.state.fw_minor = vesc_status.fw_version_minor;
@@ -77,10 +79,10 @@ namespace vesc_driver {
         state_msg.state.direction = vesc_status.direction;
     }
 
-    void VescDriver::getStatusBlocking(xesc_msgs::XescStateStamped &state_msg) {
+    void VescDriver::getStatusBlocking(xesc_msgs::msg::XescStateStamped &state_msg) {
         vesc_.wait_for_status(&vesc_status);
 
-        state_msg.header.stamp = ros::Time::now();
+        state_msg.header.stamp = node_->now();
         state_msg.state.connection_state = vesc_status.connection_state;
         state_msg.state.fw_major = vesc_status.fw_version_major;
         state_msg.state.fw_minor = vesc_status.fw_version_minor;
@@ -100,20 +102,22 @@ namespace vesc_driver {
     }
 
 
-    VescDriver::CommandLimit::CommandLimit(const ros::NodeHandle &nh, const std::string &str,
+    VescDriver::CommandLimit::CommandLimit(rclcpp::Node& nh, const std::string &str,
                                            const boost::optional<double> &min_lower,
                                            const boost::optional<double> &max_upper)
             : name(str) {
+        nh.declare_parameter(name + "_min", rclcpp::PARAMETER_DOUBLE);
+        nh.declare_parameter(name + "_max", rclcpp::PARAMETER_DOUBLE);
         // check if user's minimum value is outside of the range min_lower to max_upper
         double param_min;
-        if (nh.getParam(name + "_min", param_min)) {
+        if (nh.get_parameter(name + "_min", param_min)) {
             if (min_lower && param_min < *min_lower) {
                 lower = *min_lower;
-                ROS_WARN_STREAM("Parameter " << name << "_min (" << param_min << ") is less than the feasible minimum ("
+                RCLCPP_WARN_STREAM(nh.get_logger(),"Parameter " << name << "_min (" << param_min << ") is less than the feasible minimum ("
                                              << *min_lower << ").");
             } else if (max_upper && param_min > *max_upper) {
                 lower = *max_upper;
-                ROS_WARN_STREAM(
+                RCLCPP_WARN_STREAM(nh.get_logger(),
                         "Parameter " << name << "_min (" << param_min << ") is greater than the feasible maximum ("
                                      << *max_upper << ").");
             } else {
@@ -125,14 +129,14 @@ namespace vesc_driver {
 
         // check if the uers' maximum value is outside of the range min_lower to max_upper
         double param_max;
-        if (nh.getParam(name + "_max", param_max)) {
+        if (nh.get_parameter(name + "_max", param_max)) {
             if (min_lower && param_max < *min_lower) {
                 upper = *min_lower;
-                ROS_WARN_STREAM("Parameter " << name << "_max (" << param_max << ") is less than the feasible minimum ("
+                RCLCPP_WARN_STREAM(nh.get_logger(),"Parameter " << name << "_max (" << param_max << ") is less than the feasible minimum ("
                                              << *min_lower << ").");
             } else if (max_upper && param_max > *max_upper) {
                 upper = *max_upper;
-                ROS_WARN_STREAM(
+                RCLCPP_WARN_STREAM(nh.get_logger(),
                         "Parameter " << name << "_max (" << param_max << ") is greater than the feasible maximum ("
                                      << *max_upper << ").");
             } else {
@@ -144,7 +148,7 @@ namespace vesc_driver {
 
         // check for min > max
         if (upper && lower && *lower > *upper) {
-            ROS_WARN_STREAM(
+            RCLCPP_WARN_STREAM(nh.get_logger(),
                     "Parameter " << name << "_max (" << *upper << ") is less than parameter " << name << "_min ("
                                  << *lower << ").");
             double temp(*lower);
@@ -162,18 +166,14 @@ namespace vesc_driver {
             oss << *upper;
         else
             oss << "(none)";
-        ROS_DEBUG_STREAM(oss.str());
+        RCLCPP_DEBUG_STREAM(nh.get_logger(),oss.str());
     }
 
     double VescDriver::CommandLimit::clip(double value) {
         if (lower && value < lower) {
-            ROS_INFO_THROTTLE(10, "%s command value (%f) below minimum limit (%f), clipping.", name.c_str(), value,
-                              *lower);
             return *lower;
         }
         if (upper && value > upper) {
-            ROS_INFO_THROTTLE(10, "%s command value (%f) above maximum limit (%f), clipping.", name.c_str(), value,
-                              *upper);
             return *upper;
         }
         return value;

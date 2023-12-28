@@ -45,36 +45,41 @@
 
 #include <boost/optional.hpp>
 
-#include <ros/ros.h>
-#include <std_msgs/Float64.h>
+#include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/float64.hpp>
 
 #include "vesc_driver/vesc_interface.h"
+#include "xesc_msgs/msg/xesc_state_stamped.hpp"
 #include "vesc_driver/vesc_packet.h"
 #include "xesc_interface/xesc_interface.h"
+#include <rclcpp/logger.hpp>
+#include <rclcpp/exceptions/exceptions.hpp>
+
 
 namespace vesc_driver
 {
 class VescDriver : public xesc_interface::XescInterface
 {
 public:
-    void getStatus(xesc_msgs::XescStateStamped &state) override;
+    void getStatus(xesc_msgs::msg::XescStateStamped &state) override;
 
-    void getStatusBlocking(xesc_msgs::XescStateStamped &state) override;
+    void getStatusBlocking(xesc_msgs::msg::XescStateStamped &state) override;
 
     void setDutyCycle(float duty_cycle) override;
 
-    VescDriver(ros::NodeHandle &nh, ros::NodeHandle &private_nh);
+    VescDriver(rclcpp::Node& nh);
 
     void stop();
 private:
   // interface to the VESC
   VescInterface vesc_;
+    rclcpp::Node *node_;
   void vescErrorCallback(const std::string& error);
 
   // limits on VESC commands
   struct CommandLimit
   {
-    CommandLimit(const ros::NodeHandle& nh, const std::string& str,
+    CommandLimit(rclcpp::Node& nh, const std::string& str,
                  const boost::optional<double>& min_lower = boost::optional<double>(),
                  const boost::optional<double>& max_upper = boost::optional<double>());
     double clip(double value);

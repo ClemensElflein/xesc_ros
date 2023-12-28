@@ -1,41 +1,32 @@
-#include <ros/ros.h>
+#include "xesc_driver/xesc_driver_node.h"
+#include <rmw/qos_profiles.h>
 
-#include "std_msgs/Float32.h"
-#include <xesc_msgs/XescStateStamped.h>
-#include "xesc_driver/xesc_driver.h"
+using namespace xesc_driver;
+using std::placeholders::_1;
 
-xesc_driver::XescDriver* xesc_driver_ptr = nullptr;
+XescDriverNode::XescDriverNode() : rclcpp::Node("XescDriver")
+{
+    declare_parameter("xesc_type", rclcpp::PARAMETER_STRING);
 
-void velReceived(const std_msgs::Float32::ConstPtr &msg) {
+    xesc_driver_ptr = new xesc_driver::XescDriver(*this);
+
+    state_publisher_ = create_publisher<xesc_msgs::msg::XescStateStamped>(
+        "~/sensors/core", rclcpp::QoS(rclcpp::KeepLast(1), rmw_qos_profile_sensor_data));
+    vel_sub_ = create_subscription<std_msgs::msg::Float32>("~/duty_cycle", 10, std::bind(&XescDriverNode::velReceived, this, _1));
+}
+
+void XescDriverNode::velReceived(const std_msgs::msg::Float32& msg)
+{
     if(!xesc_driver_ptr)
         return;
 
-    xesc_driver_ptr->setDutyCycle(msg->data);
+    xesc_driver_ptr->setDutyCycle(msg.data);
 }
 
-int main(int argc, char **argv) {
-    ros::init(argc, argv, "xesc_2040_driver_node");
-    ros::NodeHandle nh;
-    ros::NodeHandle private_nh("~");
-    ros::Subscriber duty_cycle_sub = private_nh.subscribe("duty_cycle", 0, velReceived, ros::TransportHints().tcpNoDelay(true));
-
-    // create xesc state (telemetry) publisher
-    ros::Publisher state_pub = nh.advertise<xesc_msgs::XescStateStamped>("sensors/core", 10);
-
-    xesc_driver_ptr = new xesc_driver::XescDriver(nh,private_nh);
-
-    ros::AsyncSpinner spinner(1);
-    spinner.start();
-    xesc_msgs::XescStateStamped state_msg;
-    while (ros::ok()) {
-        xesc_driver_ptr->getStatusBlocking(state_msg);
-        state_pub.publish(state_msg);
-    }
-    ROS_INFO_STREAM("stopping XESC driver node");
-    xesc_driver_ptr->stop();
-    spinner.stop();
-
-    delete xesc_driver_ptr;
-
+int main(int argc, char * argv[])
+{
+    rclcpp::init(argc, argv);
+    rclcpp::spin(std::make_shared<XescDriverNode>());
+    rclcpp::shutdown();
     return 0;
 }
